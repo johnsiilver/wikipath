@@ -92,12 +92,4 @@ func main() {
 	pb.RegisterSPFServiceServer(grpcServer, serv)
 	glog.Infof("Starting server on :%d", *port)
 	grpcServer.Serve(lis)
-
-	/*
-		p, err := g.SPF("Space Shuttle", "Prussia")
-		if err != nil {
-
-		}
-		fmt.Printf("shortestPath:\n\t%s\n", strings.Join(p, "\n\t"))
-	*/
 }
