@@ -12,7 +12,7 @@ import (
 
 	"github.com/golang/glog"
 	"github.com/johnsiilver/golib/signal"
-	"github.com/johnsiilver/wikipath/crawler/internal/graph"
+	"github.com/johnsiilver/wikipath/crawler/graph"
 	"github.com/johnsiilver/wikipath/crawler/internal/watch"
 )
 

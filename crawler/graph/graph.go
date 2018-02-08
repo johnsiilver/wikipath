@@ -10,7 +10,7 @@ import (
 
 	"github.com/golang/glog"
 	"github.com/google/btree"
-	"github.com/johnsiilver/wikipath/crawler/internal/graph/nodify"
+	"github.com/johnsiilver/wikipath/crawler/graph/internal/nodify"
 	"github.com/mabu/algo/graph/bfs"
 )
 
@@ -41,6 +41,8 @@ type Articles struct {
 	// This is the current graph.
 	current atomic.Value // graphValue
 
+	updateCh chan struct{}
+
 	// These are used when processing a new graph.
 	edgesCh    chan *nodify.Node
 	edgesToID  nodify.TitleToID
@@ -51,7 +53,7 @@ type Articles struct {
 
 // New is the constructor for Articles.
 func New(p string) (*Articles, error) {
-	g := &Articles{edgesCh: make(chan *nodify.Node, 100)}
+	g := &Articles{edgesCh: make(chan *nodify.Node, 100), updateCh: make(chan struct{}, 1)}
 
 	for i := 0; i < runtime.NumCPU(); i++ {
 		go g.edgesProcesser()
@@ -85,6 +87,11 @@ func (g *Articles) SPF(from string, to string) ([]string, error) {
 		s = append(s, value.graph[int(id)-1].Title)
 	}
 	return s, nil
+}
+
+// UpdateNotify returns a chan that receives a signal when an update has occurred.
+func (g *Articles) UpdateNotify() chan struct{} {
+	return g.updateCh
 }
 
 // Update says to update the Graph model from the XML data at file path "p.".
@@ -123,6 +130,11 @@ func (g *Articles) Update(p string) error {
 		graph: graph,
 	}
 	g.current.Store(value)
+	select {
+	case g.updateCh <- struct{}{}:
+	default:
+		// Do nothing.
+	}
 	return nil
 }
 

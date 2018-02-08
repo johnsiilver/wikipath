@@ -2,11 +2,13 @@ package server
 
 import (
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/golang/glog"
 	"github.com/johnsiilver/golib/cache/lru"
 	"github.com/johnsiilver/wikipath/crawler"
+	"github.com/johnsiilver/wikipath/crawler/graph"
 	pb "github.com/johnsiilver/wikipath/proto"
 	"golang.org/x/net/context"
 )
@@ -15,7 +17,7 @@ import (
 // on various wikipedia files.
 type WikiSPF struct {
 	spf crawler.SPFer
-	lru lru.Cache
+	lru atomic.Value // lru.Cache
 }
 
 // New is the constructor for WikiSPF.
@@ -35,12 +37,23 @@ func New() (pb.SPFServiceServer, error) {
 		return nil, err
 	}
 
-	return &WikiSPF{spf: query, lru: cache}, nil
+	w := &WikiSPF{spf: query}
+	w.lru.Store(cache)
+
+	// Drain any notification that have already come across.
+	select {
+	case <-w.spf.(*graph.Articles).UpdateNotify():
+	default:
+	}
+
+	go w.cacheNullify()
+
+	return w, nil
 }
 
 // Search implements pb.Search().
 func (w *WikiSPF) Search(ctx context.Context, req *pb.SPFRequest) (*pb.SPFResponse, error) {
-	if cacheHit, ok := w.lru.Get(w.cacheKey(req.From, req.To)); ok {
+	if cacheHit, ok := w.lru.Load().(lru.Cache).Get(w.cacheKey(req.From, req.To)); ok {
 		glog.Infof("cache hit for %s:%s", req.From, req.To)
 		return &pb.SPFResponse{Path: cacheHit.([]string)}, nil
 	}
@@ -51,11 +64,23 @@ func (w *WikiSPF) Search(ctx context.Context, req *pb.SPFRequest) (*pb.SPFRespon
 		return nil, err
 	}
 	glog.Infof("SPF crawl took %v", time.Now().Sub(start))
-	if err := w.lru.Set(w.cacheKey(req.From, req.To), path); err != nil {
+	if err := w.lru.Load().(lru.Cache).Set(w.cacheKey(req.From, req.To), path); err != nil {
 		glog.Errorf("problem populating LRU cache: %s", err)
 	}
 
 	return &pb.SPFResponse{Path: path}, nil
+}
+
+func (w *WikiSPF) cacheNullify() {
+	g := w.spf.(*graph.Articles)
+	for _ = range g.UpdateNotify() {
+		cache, err := lru.New(lru.NumberLimit(1000))
+		if err != nil {
+			glog.Errorf("can't make new cache: %s", err)
+			continue
+		}
+		w.lru.Store(cache)
+	}
 }
 
 func (*WikiSPF) cacheKey(from, to string) string {
