@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+message SPFRequest {
+  string from = 1;
+  string to = 2;
+}
+
+message SPFResponse {
+  repeated string path = 1;
+}
+
+service SPFService {
+  rpc Search (SPFRequest) returns (SPFResponse);
+}
